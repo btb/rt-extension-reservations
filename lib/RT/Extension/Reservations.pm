@@ -12,6 +12,110 @@ no warnings qw(redefine);
 package RT::Ticket;
 
 
+# Check for conflicting reservations
+sub SetStarts {
+    my $self = shift;
+    my $value = shift;
+
+    # Only applies to reservations lifecycle
+    return $self->SUPER::SetStarts( $value )
+        unless $self->QueueObj->Lifecycle->Name eq 'reservations';
+
+    # Only applies if we have an asset
+    my ( $asset, $msg ) = $self->GetReservationAsset;
+    return $self->SUPER::SetStarts( $value )
+        unless $asset;
+
+    my $Starts = RT::Date->new( $self->CurrentUser );
+    if ( defined $value ) {
+        $Starts->Set( Format => 'ISO', Value => $value );
+    }
+
+    # Look for conflicts
+    my @values = (
+        $self->Id,
+        $asset->URI,
+        $Starts,
+        $Starts, $Starts,
+        join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
+    );
+
+    my $sql = <<SQL;
+id != %d
+ AND RefersTo = '%s'
+ AND (Starts = '%s'
+  OR  (Starts <   '%s' AND    Due > '%s'))
+ AND (%s)
+SQL
+
+    RT::Logger->info($sql);
+
+    $sql = sprintf($sql, @values);
+
+    my $tickets = RT::Tickets->new( $self->CurrentUser );
+    $tickets->FromSQL( $sql );
+    $tickets->RedoSearch;
+    if ( my $ticket = $tickets->First ) {
+        return ( 0, $self->loc('Can\'t set Starts to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
+			       $Starts->AsString, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+    }
+
+    return $self->SUPER::SetStarts( $value );
+};
+
+
+# Check for conflicting reservations
+sub SetDue {
+    my $self = shift;
+    my $value = shift;
+
+    # Only applies to reservations lifecycle
+    return $self->SUPER::SetDue( $value )
+        unless $self->QueueObj->Lifecycle->Name eq 'reservations';
+
+    # Only applies if we have an asset
+    my ( $asset, $msg ) = $self->GetReservationAsset;
+    return $self->SUPER::SetDue( $value )
+        unless $asset;
+
+    my $Due = RT::Date->new( $self->CurrentUser );
+    if ( defined $value ) {
+        $Due->Set( Format => 'ISO', Value => $value );
+    }
+
+    # Look for conflicts
+    my @values = (
+        $self->Id,
+        $asset->URI,
+        $Due,
+        $Due, $Due,
+        join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
+    );
+
+    my $sql = <<SQL;
+id != %d
+ AND RefersTo = '%s'
+ AND (Due = '%s'
+  OR  (Starts <   '%s' AND    Due > '%s'))
+ AND (%s)
+SQL
+
+    RT::Logger->info($sql);
+
+    $sql = sprintf($sql, @values);
+
+    my $tickets = RT::Tickets->new( $self->CurrentUser );
+    $tickets->FromSQL( $sql );
+    $tickets->RedoSearch;
+    if ( my $ticket = $tickets->First ) {
+        return ( 0, $self->loc('Can\'t set Due to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
+			       $Due->AsString, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+    }
+
+    return $self->SUPER::SetDue( $value )
+};
+
+
 # Can't alter asset link for reservations out of initial status
 my $Orig_DeleteLink = \&DeleteLink;
 *DeleteLink = sub {
@@ -105,11 +209,8 @@ my $Orig_SetStatus = \&SetStatus;
     return ( 0, $self->loc('Couldn\'t load asset: [_1]', $msg) )
         unless $asset;
 
-
     # Make sure linked asset is not already reserved
-
-
-    my @args = (
+    my @values = (
         $self->Id,
         $asset->URI,
         $self->StartsObj->ISO,
@@ -135,7 +236,7 @@ SQL
 
     RT::Logger->info($sql);
 
-    $sql = sprintf($sql, @args);
+    $sql = sprintf($sql, @values);
 
     my $tickets = RT::Tickets->new( $self->CurrentUser );
     $tickets->FromSQL( $sql );
@@ -186,34 +287,5 @@ sub GetReservationAsset {
     return ( $Asset, '' );
 }
 
-
-
-package RTx::AssetTracker::Asset;
-
-
-sub CheckAvailability {
-    my $self = shift;
-    my %args = (
-        Starts => undef,
-        Due    => undef,
-        @_
-    );
-
-    my $lifecycle = RT::Lifecycle->new( $self->CurrentUser );
-    $lifecycle->Load( 'reservations' );
-
-    my @values = (
-        $self->URI,
-        join( " OR ", map { "Status = '$_'" } $lifecycle->Valid('initial', 'active') ),
-    );
-
-    my $sql = sprintf <<SQL, @values;
-RefersTo = '%s'
- AND (%s)
-SQL
-
-    RT::Logger->info("Looking for conflicts: $sql");
-    return $sql;
-}
 
 1;
