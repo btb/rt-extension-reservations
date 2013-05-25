@@ -12,8 +12,8 @@
 
 Set(%Lifecycles,
     reservations => {
-        initial         => [ 'tentative', 'booked' ],
-        active          => [ 'out' ],
+        initial         => [ 'tentative' ],
+        active          => [ 'booked', 'out' ],
         inactive        => [ 'returned', 'settled', 'cancelled', 'deleted' ],
 
         defaults => {
@@ -31,8 +31,8 @@ Set(%Lifecycles,
             # from   => [ to list ],
             tentative => [qw(booked cancelled)],
             booked    => [qw(tentative out cancelled)],
-            out       => [qw(returned settled booked)], #booked only for testing
-            returned  => [qw(deleted booked)], #booked only for testing)],
+            out       => [qw(returned settled)],
+            returned  => [qw(deleted)],
             settled   => [qw(deleted)],
             cancelled => [qw(deleted)],
             deleted   => [qw()],

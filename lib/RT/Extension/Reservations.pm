@@ -106,27 +106,44 @@ my $Orig_SetStatus = \&SetStatus;
 	unless $asset;
 
 
-    # Make sure linked asset is not already out
+    # Make sure linked asset is not already reserved
+
+
+    my @args = (
+	$self->Id,
+	$asset->URI,
+	$self->StartsObj->ISO,
+	$self->DueObj->ISO,
+	$self->StartsObj->ISO, $self->DueObj->ISO,
+	$self->StartsObj->ISO, $self->DueObj->ISO,
+	$self->StartsObj->ISO, $self->StartsObj->ISO,
+	$self->DueObj->ISO, $self->DueObj->ISO,
+	join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
+    );
+
+    my $sql = <<SQL;
+id != %d
+ AND RefersTo = '%s'
+ AND (Starts = '%s'
+  OR     Due = '%s'
+  OR  (Starts >   '%s' AND Starts < '%s')
+  OR  (   Due >   '%s' AND    Due < '%s')
+  OR  (Starts <   '%s' AND    Due > '%s')
+  OR  (Starts <   '%s' AND    Due > '%s'))
+ AND (%s)
+SQL
+
+    RT::Logger->info($sql);
+
+    $sql = sprintf($sql, @args);
+
     my $tickets = RT::Tickets->new( $self->CurrentUser );
-    $tickets->FromSQL( "RefersTo = '" . $asset->URI . "' AND ("
-		      . join( " OR ",
-			      map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') )
-		      . ")" );
+    $tickets->FromSQL( $sql );
+    $tickets->RedoSearch;
     if ( my $ticket = $tickets->First ) {
-	return ( 0, $self->loc('asset [_1] already activated by ticket [_2]', $asset->Id, $ticket->Id) );
+	return ( 0, $self->loc('asset [_1] already reserved from [_2] to [_3] by ticket [_4]',
+			      $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
-
-
-    # Make sure asset is not scheduled to go out again before this reservation is due
-    $tickets->FromSQL( "RefersTo = '" . $asset->URI . "' AND ("
-		      . join( " OR ",
-			      map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('initial') )
-		      . ") AND id != " . $self->Id
-		      . " AND Starts > 'now' AND Starts < '" . $self->DueAsString . "'");
-    if ( my $ticket = $tickets->First ) {
-	return ( 0, $self->loc('Can\'t be activated, asset [_1] is scheduled for [_2]. See ticket [_3]', $asset->Id, $ticket->StartsObj->AsString, $ticket->Id) );
-    }
-
 
     return $Orig_SetStatus->( $self, %args );
 };
@@ -148,8 +165,10 @@ sub GetReservationAsset {
 	unless $self->QueueObj->Lifecycle->Name eq 'reservations';
 
     my $links = $self->RefersTo;
+    $links->RedoSearch;
     my $found = 0;
     my $Asset;
+    RT::Logger->info( $self->loc("found [_1] links for ticket [_2]", $links->Count, $self->Id) );
     while ( my $link = $links->Next ) {
 	my $target = $link->TargetObj;
 	next unless ref( $target ) eq 'RTx::AssetTracker::Asset';
