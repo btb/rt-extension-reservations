@@ -9,6 +9,11 @@
 #                                                                   #
 #############################  WARNING  #############################
 
+=head 2 The reservations lifecycle
+
+The reservations lifecycle is used for reservation of assets in RT.
+
+=cut
 
 Set(%Lifecycles,
     reservations => {
