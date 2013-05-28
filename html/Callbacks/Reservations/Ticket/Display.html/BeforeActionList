@@ -1,0 +1,33 @@
+<%perl>
+
+    # Only applies to reservations lifecycle
+    return
+        unless $Ticket->QueueObj->Lifecycle->Name eq 'reservations';
+
+    my ( $asset, $msg ) = $Ticket->GetReservationAsset;
+    unless ( $asset ) {
+	push @$Actions, loc('Warning: This reservation needs to \'Refer To\' an asset.');
+	return;
+    }
+
+    unless ( $Ticket->StartsObj->Unix > time ) {
+	push @$Actions, loc('Warning: This reservation needs a \'Starts\' time, in the future.');
+        return;
+    }
+
+    unless ( $Ticket->DueObj->Unix > $Ticket->StartsObj->Unix ) {
+        push @$Actions, loc('Warning: This reservation needs a \'Due\' time, later than \'Starts\'.');
+        return;
+    }
+  
+    my $tickets = $Ticket->FindConflicts;
+    while ( my $t = $tickets->Next ) {
+        push @$Actions, loc('Warning: Asset #[_1]: [_2] already reserved from [_3] to [_4] by ticket [_5]',
+                         $asset->Id, $asset->Name, $t->StartsObj->AsString, $t->DueAsString, $t->Id);
+    }
+
+</%perl>
+<%args>
+$Actions => undef
+$Ticket => undef
+</%args>
