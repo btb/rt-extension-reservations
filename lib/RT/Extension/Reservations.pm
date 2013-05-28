@@ -1,3 +1,28 @@
+=head1 NAME
+
+  RT::Extension::Reservations - Extension to add reservation of assets to RT
+
+=head1 SYNOPSIS
+
+
+=head1 DESCRIPTION
+
+A reservation is a ticket in a queue using the 'reservations'
+lifecycle. To be activated, a reservation needs a start time (Starts),
+an end time (Due) and an asset (A RefersTo link, to an
+RTx::AssetTracker::Asset). It must also not conflict with any already
+activated reservations.
+
+Two reservations conflict when their start times are equal, their end
+times are equal, or either reservation's start or end times fall
+between the other reservation's start and end times.
+
+=head1 METHODS
+
+
+=cut
+
+
 package RT::Extension::Reservations;
 
 use strict;
@@ -11,6 +36,13 @@ no warnings qw(redefine);
 
 package RT::Ticket;
 
+
+=head2 FindConflicts
+
+Returns a list of reservations that conflict with the currect
+reservation, or with the given parameters.
+
+=cut
 
 sub FindConflicts {
     my $self = shift;
@@ -37,8 +69,6 @@ sub FindConflicts {
     $URI = $args{'URI'} || $URI;
     $Starts = $args{'Starts'} || $Starts;
     $Due = $args{'Due'} || $Due;
-
-    RT::Logger->info("$URI -- $Starts -- $Due");
 
     return $conflicts unless $URI && ( $Starts || $Due );
 
@@ -67,8 +97,6 @@ sub FindConflicts {
         push @clauses, '(' . join( " OR ", @times ) . ')';
     }
     my $sql = join( " AND ", @clauses );
-
-    RT::Logger->info($sql);
 
     $conflicts->FromSQL( $sql );
     $conflicts->RedoSearch;
@@ -199,7 +227,6 @@ my $Orig_SetStatus = \&SetStatus;
     return $Orig_SetStatus->( $self, %args )
         unless $self->QueueObj->Lifecycle->Name eq 'reservations';
 
-    RT::Logger->info($self->loc("Ticket [_1]: want to set status to [_2]", $self->Id, $args{'Status'}));
     # Are we trying to activate?
     return $Orig_SetStatus->( $self, %args )
         unless $self->QueueObj->Lifecycle->IsActive( $args{'Status'} );
@@ -229,10 +256,10 @@ my $Orig_SetStatus = \&SetStatus;
 
 
 
-
 =head2 GetReservationAsset
 
-  This returns the asset we are reserving.
+This returns the asset we are reserving. The reservation ticket must
+refer to exactly one asset for it to be a valid reservation.
 
 =cut
 
@@ -247,7 +274,6 @@ sub GetReservationAsset {
     $links->RedoSearch;
     my $found = 0;
     my $Asset;
-    RT::Logger->info( $self->loc("found [_1] links for ticket [_2]", $links->Count, $self->Id) );
     while ( my $link = $links->Next ) {
         my $target = $link->TargetObj;
         next unless ref( $target ) eq 'RTx::AssetTracker::Asset';
