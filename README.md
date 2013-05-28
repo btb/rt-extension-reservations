@@ -1,5 +1,5 @@
-rt-extension-reservations
-=========================
+RT::Extension::Reservations
+===========================
 
 Adds a reservations system to the Request Tracker/Asset Tracker combination 
 
