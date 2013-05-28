@@ -39,7 +39,7 @@ package RT::Ticket;
 
 =head2 FindConflicts
 
-Returns a list of reservations that conflict with the currect
+Returns a list of reservations that conflict with the current
 reservation, or with the given parameters.
 
 =cut
@@ -114,6 +114,10 @@ sub SetStarts {
     return $self->SUPER::SetStarts( $value )
         unless $self->QueueObj->Lifecycle->Name eq 'reservations';
 
+    # Only applies if we are activated
+    return $self->SUPER::SetStarts( $value )
+        if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
+
     # Only applies if we have an asset
     my ( $asset, $msg ) = $self->GetReservationAsset;
     return $self->SUPER::SetStarts( $value )
@@ -137,6 +141,10 @@ sub SetDue {
     # Only applies to reservations lifecycle
     return $self->SUPER::SetDue( $value )
         unless $self->QueueObj->Lifecycle->Name eq 'reservations';
+
+    # Only applies if we are activated
+    return $self->SUPER::SetDue( $value )
+        if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
     # Only applies if we have an asset
     my ( $asset, $msg ) = $self->GetReservationAsset;
@@ -167,6 +175,7 @@ my $Orig_DeleteLink = \&DeleteLink;
     return $Orig_DeleteLink->( $self, %args )
         unless $self->QueueObj->Lifecycle->Name eq 'reservations';
 
+    # Only applies if we are activated
     return $Orig_DeleteLink->( $self, %args )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
@@ -195,6 +204,7 @@ my $Orig_AddLink = \&AddLink;
     return $Orig_AddLink->( $self, %args )
         unless $self->QueueObj->Lifecycle->Name eq 'reservations';
 
+    # Only applies if we are activated
     return $Orig_AddLink->( $self, %args )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
