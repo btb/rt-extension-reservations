@@ -12,6 +12,71 @@ no warnings qw(redefine);
 package RT::Ticket;
 
 
+sub FindConflicts {
+    my $self = shift;
+    my %args = (
+        URI    => undef,
+        Starts => undef,
+        Due    => undef,
+        @_,
+    );
+
+    my $conflicts = RT::Tickets->new( $self->CurrentUser );
+    my ($URI, $Starts, $Due) = (undef, undef, undef);
+
+    # if we have an object, load existing asset and dates
+    if ( $self->Id ) {
+        my ( $asset, $msg ) = $self->GetReservationAsset;
+        $URI = $asset->URI
+            if $asset;
+        $Starts = $self->StartsObj->ISO;
+        $Due = $self->DueObj->ISO;
+    }
+
+    # load args to override existing asset and dates
+    $URI = $args{'URI'} || $URI;
+    $Starts = $args{'Starts'} || $Starts;
+    $Due = $args{'Due'} || $Due;
+
+    RT::Logger->info("$URI -- $Starts -- $Due");
+
+    return $conflicts unless $URI && ( $Starts || $Due );
+
+    # search for conflicting tickets
+    my @clauses;
+    push @clauses, "RefersTo = '$URI'";
+    push @clauses, 'id != ' . $self->Id if $self->Id;
+    {
+        my @statuses = map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active');
+        push @clauses, '(' . join( " OR ", @statuses ) . ')';
+    }
+    {
+        my @times;
+        if ( $Starts ) {
+            push @times, "Starts = '$Starts'";
+            push @times, "(Starts < '$Starts' AND Due > '$Starts')";
+        }
+        if ( $Due ) {
+            push @times, "Due = '$Due'";
+            push @times, "(Starts < '$Due' AND Due > '$Due')";
+        }
+        if ( $Starts && $Due ) {
+            push @times, "(Starts > '$Starts' AND Starts < '$Due')";
+            push @times, "(Due > '$Starts' AND Due < '$Due')";
+        }
+        push @clauses, '(' . join( " OR ", @times ) . ')';
+    }
+    my $sql = join( " AND ", @clauses );
+
+    RT::Logger->info($sql);
+
+    $conflicts->FromSQL( $sql );
+    $conflicts->RedoSearch;
+
+    return $conflicts;
+}
+        
+
 # Check for conflicting reservations
 sub SetStarts {
     my $self = shift;
@@ -26,38 +91,10 @@ sub SetStarts {
     return $self->SUPER::SetStarts( $value )
         unless $asset;
 
-    my $Starts = RT::Date->new( $self->CurrentUser );
-    if ( defined $value ) {
-        $Starts->Set( Format => 'ISO', Value => $value );
-    }
-
-    # Look for conflicts
-    my @values = (
-        $self->Id,
-        $asset->URI,
-        $Starts,
-        $Starts, $Starts,
-        join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
-    );
-
-    my $sql = <<SQL;
-id != %d
- AND RefersTo = '%s'
- AND (Starts = '%s'
-  OR  (Starts <   '%s' AND    Due > '%s'))
- AND (%s)
-SQL
-
-    RT::Logger->info($sql);
-
-    $sql = sprintf($sql, @values);
-
-    my $tickets = RT::Tickets->new( $self->CurrentUser );
-    $tickets->FromSQL( $sql );
-    $tickets->RedoSearch;
+    my $tickets = $self->FindConflicts( Starts => $value );
     if ( my $ticket = $tickets->First ) {
         return ( 0, $self->loc('Can\'t set Starts to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
-			       $Starts->AsString, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+                               $value, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
 
     return $self->SUPER::SetStarts( $value );
@@ -78,38 +115,10 @@ sub SetDue {
     return $self->SUPER::SetDue( $value )
         unless $asset;
 
-    my $Due = RT::Date->new( $self->CurrentUser );
-    if ( defined $value ) {
-        $Due->Set( Format => 'ISO', Value => $value );
-    }
-
-    # Look for conflicts
-    my @values = (
-        $self->Id,
-        $asset->URI,
-        $Due,
-        $Due, $Due,
-        join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
-    );
-
-    my $sql = <<SQL;
-id != %d
- AND RefersTo = '%s'
- AND (Due = '%s'
-  OR  (Starts <   '%s' AND    Due > '%s'))
- AND (%s)
-SQL
-
-    RT::Logger->info($sql);
-
-    $sql = sprintf($sql, @values);
-
-    my $tickets = RT::Tickets->new( $self->CurrentUser );
-    $tickets->FromSQL( $sql );
-    $tickets->RedoSearch;
+    my $tickets = $self->FindConflicts( Due => $value );
     if ( my $ticket = $tickets->First ) {
         return ( 0, $self->loc('Can\'t set Due to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
-			       $Due->AsString, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+                               $value, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
 
     return $self->SUPER::SetDue( $value )
@@ -209,38 +218,7 @@ my $Orig_SetStatus = \&SetStatus;
     return ( 0, $self->loc('Couldn\'t load asset: [_1]', $msg) )
         unless $asset;
 
-    # Make sure linked asset is not already reserved
-    my @values = (
-        $self->Id,
-        $asset->URI,
-        $self->StartsObj->ISO,
-        $self->DueObj->ISO,
-        $self->StartsObj->ISO, $self->DueObj->ISO,
-        $self->StartsObj->ISO, $self->DueObj->ISO,
-        $self->StartsObj->ISO, $self->StartsObj->ISO,
-        $self->DueObj->ISO, $self->DueObj->ISO,
-        join( " OR ", map { "Status = '$_'" } $self->QueueObj->Lifecycle->Valid('active') ),
-    );
-
-    my $sql = <<SQL;
-id != %d
- AND RefersTo = '%s'
- AND (Starts = '%s'
-  OR     Due = '%s'
-  OR  (Starts >   '%s' AND Starts < '%s')
-  OR  (   Due >   '%s' AND    Due < '%s')
-  OR  (Starts <   '%s' AND    Due > '%s')
-  OR  (Starts <   '%s' AND    Due > '%s'))
- AND (%s)
-SQL
-
-    RT::Logger->info($sql);
-
-    $sql = sprintf($sql, @values);
-
-    my $tickets = RT::Tickets->new( $self->CurrentUser );
-    $tickets->FromSQL( $sql );
-    $tickets->RedoSearch;
+    my $tickets = $self->FindConflicts;
     if ( my $ticket = $tickets->First ) {
         return ( 0, $self->loc('asset [_1] already reserved from [_2] to [_3] by ticket [_4]',
                               $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );

@@ -8,6 +8,7 @@ use RT::Extension::Reservations::Test tests => undef;
 
 {
 
+# Make a queue using the 'reservations' lifecycle
 use_ok ('RT::Queue');
 ok(my $testqueue = RT::Queue->new(RT->SystemUser));
 ok($testqueue->Create( Name => 'reservation tests', Lifecycle => 'reservations' ));
@@ -33,17 +34,20 @@ ok(require RTx::AssetTracker::Asset, "Loading the RT::Ticket library");
 
 {
 
+# Make an asset to reserve
 my $asset = RTx::AssetTracker::Asset->new(RT->SystemUser);
 my ($id, $tid, $msg)= $asset->Create(Type => 'reservable assets',
             Name => 'test asset');
 ok($id, $msg);
 
 
+# make a reservation
 my $ticket1 = RT::Ticket->new(RT->SystemUser);
 ($id, $tid, $msg)= $ticket1->Create(Queue => 'reservation tests',
             Subject => 'reservation 1');
 ok($id, $msg);
 is($ticket1->Status, 'tentative', "New ticket is created as tentative");
+
 
 ($id, $msg) = $ticket1->SetStatus('booked');
 ok(!$id, $msg);
@@ -84,7 +88,6 @@ my $ticket2 = RT::Ticket->new(RT->SystemUser);
 ($id, $tid, $msg)= $ticket2->Create(Queue => 'reservation tests',
             Subject => 'reservation 2');
 ok($id, $msg);
-is($ticket2->Status, 'tentative', "New ticket is created as tentative");
 
 $date->Set( Format => 'unknown', Value => 'tomorrow' );
 ($id, $msg) = $ticket2->SetStarts($date->ISO);
@@ -103,9 +106,8 @@ like($msg, qr/Status changed/i, "Status message is correct");
 
 my $ticket3 = RT::Ticket->new(RT->SystemUser);
 ($id, $tid, $msg)= $ticket3->Create(Queue => 'reservation tests',
-            Subject => 'reservation 2');
+            Subject => 'reservation 3');
 ok($id, $msg);
-is($ticket3->Status, 'tentative', "New ticket is created as tentative");
 
 $date->Set( Format => 'unknown', Value => 'tomorrow' );
 ($id, $msg) = $ticket3->SetStarts($date->ISO);
