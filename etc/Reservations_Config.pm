@@ -11,7 +11,46 @@
 
 =head 2 The reservations lifecycle
 
-The reservations lifecycle is used for reservation of assets in RT.
+The reservations lifecycle is used for reservations in RT.
+
+=over 4
+
+=item initial
+
+B<tentative> is the initial status for reservations.
+
+=item active
+
+B<booked> reservations are scheduled to be B<out> at some point in the
+future, and therefore the reserved item can not be booked by other
+reservations at that time. B<booked> is logically sort of between an
+initial and an active status. It is a little odd, for example, that
+generally the "Started" time, when the reservation was booked, is
+earlier than the "Starts" time, when the reservation is supposed to go
+out.
+
+B<out> reservations are "currently in progress" - the reserved item
+will not be available to go out on other reservations until
+B<returned>.
+
+=item inactive
+
+B<returned> reservations have been checked in or otherwise freed their
+reserved item to be booked or go out on other reservations.
+
+B<settled> reservations have been ended in some way other than a
+normal return. For example the reserved item was lost or damaged, and
+is no longer available to be booked or go out on other reservations.
+
+B<cancelled> reservations have been ended without the item ever going
+out, and therefore the reserved item is once again available to be
+booked or go out on other reservations.
+
+B<deleted> is used to get rid of things that were never a real
+reservation to begin with. This is never used except for cleaning up
+testing reservations or erroneous entries.
+
+=back
 
 =cut
 
