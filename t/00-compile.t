@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 
-use RT::Extension::Reservations::Test tests => 7;
+use RT::Extension::Reservations::Test tests => 4;
 
 require_ok("RT::Extension::Reservations");
 

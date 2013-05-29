@@ -15,35 +15,20 @@ ok($testqueue->Create( Name => 'reservation tests', Lifecycle => 'reservations' 
 isnt($testqueue->Id , 0);
 is($testqueue->Lifecycle->Name, 'reservations');
 
-
-use_ok ('RTx::AssetTracker::Type');
-ok(my $testtype = RTx::AssetTracker::Type->new(RT->SystemUser));
-ok($testtype->Create( Name => 'reservable assets' ));
-isnt($testtype->Id , 0);
-
-
 }
 
 {
 
 ok(require RT::Ticket, "Loading the RT::Ticket library");
-ok(require RTx::AssetTracker::Asset, "Loading the RT::Ticket library");
 
 }
 
 
 {
 
-# Make an asset to reserve
-my $asset = RTx::AssetTracker::Asset->new(RT->SystemUser);
-my ($id, $tid, $msg)= $asset->Create(Type => 'reservable assets',
-            Name => 'test asset');
-ok($id, $msg);
-
-
 # make a reservation
 my $ticket1 = RT::Ticket->new(RT->SystemUser);
-($id, $tid, $msg)= $ticket1->Create(Queue => 'reservation tests',
+my ($id, $tid, $msg)= $ticket1->Create(Queue => 'reservation tests',
             Subject => 'reservation 1');
 ok($id, $msg);
 is($ticket1->Status, 'tentative', "New ticket is created as tentative");
@@ -65,10 +50,10 @@ $date->Set( Format => 'unknown', Value => '+1 week' );
 ok($id, $msg);
 ($id, $msg) = $ticket1->SetStatus('out');
 ok(!$id, $msg);
-like($msg, qr/No referred asset/i, "Status message is correct");
+like($msg, qr/no valid uri/i, "Status message is correct");
 
 
-($id, $msg) = $ticket1->AddLink( Type => 'RefersTo', Target => $asset->URI );
+($id, $msg) = $ticket1->AddLink( Type => 'RefersTo', Target => 'at://example.com/asset/1' );
 ok($id, $msg);
 
 ($id, $msg) = $ticket1->SetStatus('booked');
@@ -96,7 +81,7 @@ $date->Set( Format => 'unknown', Value => '+1 week' );
 ($id, $msg) = $ticket2->SetDue($date->ISO);
 ok($id, $msg);
 
-($id, $msg) = $ticket2->AddLink( Type => 'RefersTo', Target => $asset->URI );
+($id, $msg) = $ticket2->AddLink( Type => 'RefersTo', Target => 'at://example.com/asset/1' );
 ok($id, $msg);
 
 ($id, $msg) = $ticket2->SetStatus('booked');
@@ -116,7 +101,7 @@ $date->Set( Format => 'unknown', Value => '+1 week' );
 ($id, $msg) = $ticket3->SetDue($date->ISO);
 ok($id, $msg);
 
-($id, $msg) = $ticket3->AddLink( Type => 'RefersTo', Target => $asset->URI );
+($id, $msg) = $ticket3->AddLink( Type => 'RefersTo', Target => 'at://example.com/asset/1' );
 ok($id, $msg);
 
 ($id, $msg) = $ticket3->SetStatus('booked');

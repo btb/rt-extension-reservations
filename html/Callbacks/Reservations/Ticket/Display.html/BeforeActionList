@@ -4,7 +4,7 @@
     return
         unless $Ticket->QueueObj->Lifecycle->Name eq 'reservations';
 
-    my ( $asset, $msg ) = $Ticket->GetReservationAsset;
+    my ( $asset, $msg ) = $Ticket->GetReservationURI;
     unless ( $asset ) {
 	push @$Actions, loc('Warning: This reservation needs to \'Refer To\' an asset.');
 	return;
@@ -22,8 +22,8 @@
   
     my $tickets = $Ticket->FindConflicts;
     while ( my $t = $tickets->Next ) {
-        push @$Actions, loc('Warning: Asset #[_1]: [_2] already reserved from [_3] to [_4] by ticket [_5]',
-                         $asset->Id, $asset->Name, $t->StartsObj->AsString, $t->DueAsString, $t->Id);
+        push @$Actions, loc('Warning: [_1] already reserved from [_2] to [_3] by reservation [_4]',
+                         $asset, $t->StartsObj->AsString, $t->DueAsString, $t->Id);
     }
 
 </%perl>

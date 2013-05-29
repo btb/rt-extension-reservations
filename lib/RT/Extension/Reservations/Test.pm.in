@@ -24,16 +24,11 @@ sub import {
     my %args  = @_;
 
     $args{'requires'} ||= [];
-    unshift @{ $args{'requires'} }, 'RTx::AssetTracker';
     if ( $args{'testing'} ) {
         unshift @{ $args{'requires'} }, 'RT::Extension::Reservations';
     } else {
         $args{'testing'} = 'RT::Extension::Reservations';
     }
-
-    $args{'config'} =<<CONFIG;
-\$RT::PluginPath = "../../plugins";
-CONFIG
 
     $class->SUPER::import( %args );
 

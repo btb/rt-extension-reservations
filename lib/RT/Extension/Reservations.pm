@@ -1,6 +1,6 @@
 =head1 NAME
 
-  RT::Extension::Reservations - Extension to add reservation of assets to RT
+  RT::Extension::Reservations - Extension to add reservations to RT
 
 =head1 SYNOPSIS
 
@@ -9,13 +9,13 @@
 
 A reservation is a ticket in a queue using the 'reservations'
 lifecycle. To be activated, a reservation needs a start time (Starts),
-an end time (Due) and an asset (A RefersTo link, to an
-RTx::AssetTracker::Asset). It must also not conflict with any already
-activated reservations.
+an end time (Due) and the item being reserved (A URI which the ticket
+RefersTo). It must also not conflict with any already activated
+reservations.
 
-Two reservations conflict when their start times are equal, their end
-times are equal, or either reservation's start or end times fall
-between the other reservation's start and end times.
+Two reservations for the same URI conflict when the start times are
+equal, their end times are equal, or either reservation's start or end
+times fall between the other reservation's start and end times.
 
 =head1 METHODS
 
@@ -56,19 +56,17 @@ sub FindConflicts {
     my $conflicts = RT::Tickets->new( $self->CurrentUser );
     my ($URI, $Starts, $Due) = (undef, undef, undef);
 
-    # if we have an object, load existing asset and dates
+    # if we have an object, load existing URI and dates
     if ( $self->Id ) {
-        my ( $asset, $msg ) = $self->GetReservationAsset;
-        $URI = $asset->URI
-            if $asset;
+        $URI = $self->GetReservationURI;
         $Starts = $self->StartsObj->ISO;
         $Due = $self->DueObj->ISO;
     }
 
-    # load args to override existing asset and dates
-    $URI = $args{'URI'} || $URI;
-    $Starts = $args{'Starts'} || $Starts;
-    $Due = $args{'Due'} || $Due;
+    # load args to override existing URI and dates
+    $URI    = $args{'URI'}    if $args{'URI'};
+    $Starts = $args{'Starts'} if $args{'Starts'};
+    $Due    = $args{'Due'}    if $args{'Due'};
 
     return $conflicts unless $URI && ( $Starts || $Due );
 
@@ -118,15 +116,15 @@ sub SetStarts {
     return $self->SUPER::SetStarts( $value )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
-    # Only applies if we have an asset
-    my ( $asset, $msg ) = $self->GetReservationAsset;
+    # Only applies if we have a URI
+    my $uri = $self->GetReservationURI;
     return $self->SUPER::SetStarts( $value )
-        unless $asset;
+        unless $uri;
 
     my $tickets = $self->FindConflicts( Starts => $value );
     if ( my $ticket = $tickets->First ) {
-        return ( 0, $self->loc('Can\'t set Starts to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
-                               $value, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+        return ( 0, $self->loc('Can\'t set Starts to [_1]. [_2] already reserved from [_3] to [_4] by reservation [_5]',
+                               $value, $uri, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
 
     return $self->SUPER::SetStarts( $value );
@@ -146,22 +144,22 @@ sub SetDue {
     return $self->SUPER::SetDue( $value )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
-    # Only applies if we have an asset
-    my ( $asset, $msg ) = $self->GetReservationAsset;
+    # Only applies if we have a uri
+    my $uri = $self->GetReservationURI;
     return $self->SUPER::SetDue( $value )
-        unless $asset;
+        unless $uri;
 
     my $tickets = $self->FindConflicts( Due => $value );
     if ( my $ticket = $tickets->First ) {
-        return ( 0, $self->loc('Can\'t set Due to [_1]. Asset [_2] already reserved from [_3] to [_4] by ticket [_5]',
-                               $value, $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+        return ( 0, $self->loc('Can\'t set Due to [_1]. [_2] already reserved from [_3] to [_4] by reservation [_5]',
+                               $value, $uri, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
 
     return $self->SUPER::SetDue( $value )
 };
 
 
-# Can't alter asset link for reservations out of initial status
+# Can't alter URI for reservations out of initial status
 my $Orig_DeleteLink = \&DeleteLink;
 *DeleteLink = sub {
     my $self = shift;
@@ -179,20 +177,14 @@ my $Orig_DeleteLink = \&DeleteLink;
     return $Orig_DeleteLink->( $self, %args )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
-    if ( $args{'Type'} eq 'RefersTo' && $args{'Target'} ) {
-        my $uri = RT::URI->new( $self->CurrentUser );
-        $uri->FromURI( $args{'Target'} );
-        my $obj = $uri->Resolver->Object;
-
-        return ( 0, $self->loc('Can\'t delete asset from activated reservation') )
-            if ( UNIVERSAL::isa($obj, 'RTx::AssetTracker::Asset') && $obj->id );
-    }
+    return ( 0, $self->loc('Can\'t delete URI from activated reservation') )
+	if ( $args{'Type'} eq 'RefersTo' && $args{'Target'} );
 
     return $Orig_DeleteLink->( $self, %args );
 };
 
 
-# Can't alter asset link for reservations out of initial status
+# Can't alter URI for reservations out of initial status
 my $Orig_AddLink = \&AddLink;
 *AddLink = sub {
     my $self = shift;
@@ -208,14 +200,8 @@ my $Orig_AddLink = \&AddLink;
     return $Orig_AddLink->( $self, %args )
         if $self->QueueObj->Lifecycle->IsInitial( $self->Status );
 
-    if ( $args{'Type'} eq 'RefersTo' && $args{'Target'} ) {
-        my $uri = RT::URI->new( $self->CurrentUser );
-        $uri->FromURI( $args{'Target'} );
-        my $obj = $uri->Resolver->Object;
-
-        return ( 0, $self->loc('Can\'t add another asset to reservation') )
-            if ( UNIVERSAL::isa($obj, 'RTx::AssetTracker::Asset') && $obj->id );
-    }
+    return ( 0, $self->loc('Can\'t add another URI to activated reservation') )
+	if ( $args{'Type'} eq 'RefersTo' && $args{'Target'} );
 
     return $Orig_AddLink->( $self, %args );
 };
@@ -250,15 +236,15 @@ my $Orig_SetStatus = \&SetStatus;
         unless $self->DueObj->Unix > $self->StartsObj->Unix;
 
 
-    # Make sure we have a valid asset
-    my ( $asset, $msg ) = $self->GetReservationAsset;
-    return ( 0, $self->loc('Couldn\'t load asset: [_1]', $msg) )
-        unless $asset;
+    # Make sure we have a valid uri
+    my $uri = $self->GetReservationURI;
+    return ( 0, $self->loc('Can\'t be activated, no valid uri') )
+        unless $uri;
 
     my $tickets = $self->FindConflicts;
     if ( my $ticket = $tickets->First ) {
-        return ( 0, $self->loc('asset [_1] already reserved from [_2] to [_3] by ticket [_4]',
-                              $asset->Id, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
+        return ( 0, $self->loc('[_1] already reserved from [_2] to [_3] by reservation [_4]',
+                              $uri, $ticket->StartsObj->AsString, $ticket->DueAsString, $ticket->Id) );
     }
 
     return $Orig_SetStatus->( $self, %args );
@@ -266,14 +252,14 @@ my $Orig_SetStatus = \&SetStatus;
 
 
 
-=head2 GetReservationAsset
+=head2 GetReservationURI
 
-This returns the asset we are reserving. The reservation ticket must
-refer to exactly one asset for it to be a valid reservation.
+This returns the URI we are reserving. The reservation ticket must
+ReferTo exactly one URI for it to be a valid reservation.
 
 =cut
 
-sub GetReservationAsset {
+sub GetReservationURI {
     my $self = shift;
 
     # Only applies to reservations lifecycle
@@ -283,23 +269,23 @@ sub GetReservationAsset {
     my $links = $self->RefersTo;
     $links->RedoSearch;
     my $found = 0;
-    my $Asset;
+    my $URI;
     while ( my $link = $links->Next ) {
-        my $target = $link->TargetObj;
-        next unless ref( $target ) eq 'RTx::AssetTracker::Asset';
-
-        $Asset = $target;
+        $URI = $link->Target;
         $found++;
     }
 
-    return ( 0, $self->loc('Too many referred assets') )
+    return wantarray ? ( undef, $self->loc('Too many referred URIs') ) : undef
         if $found > 1;
 
-    return ( 0, $self->loc('No referred asset') )
+    return wantarray ? ( undef, $self->loc('No referred URI') ) : undef
         if $found < 1;
 
-    return ( $Asset, '' );
+    return ( $URI );
 }
 
+
+require RT::Base;
+RT::Base->_ImportOverlays();
 
 1;
