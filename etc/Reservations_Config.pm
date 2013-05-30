@@ -9,7 +9,7 @@
 #                                                                   #
 #############################  WARNING  #############################
 
-=head 2 The reservations lifecycle
+=head2 The reservations lifecycle
 
 The reservations lifecycle is used for reservations in RT.
 
