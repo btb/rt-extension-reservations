@@ -229,8 +229,8 @@ my $Orig_SetStatus = \&SetStatus;
 
 
     # Make sure we have valid start and end dates
-    return ( 0, $self->loc('Can\'t be activated, \'Starts\' must be in the future.') )
-        unless $self->StartsObj->Unix > time;
+    return ( 0, $self->loc('Can\'t be activated, \'Starts\' must be set') )
+        unless $self->StartsObj->Unix;
 
     return ( 0, $self->loc('Can\'t be activated, \'Due\' must be after \'Starts\'.') )
         unless $self->DueObj->Unix > $self->StartsObj->Unix;

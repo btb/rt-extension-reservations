@@ -36,7 +36,7 @@ is($ticket1->Status, 'tentative', "New ticket is created as tentative");
 
 ($id, $msg) = $ticket1->SetStatus('booked');
 ok(!$id, $msg);
-like($msg, qr/must be in the future/i, "Status message is correct");
+like($msg, qr/must be set/i, "Status message is correct");
 
 my $date = RT::Date->new(RT->SystemUser);
 $date->Set( Format => 'unknown', Value => 'tomorrow' );

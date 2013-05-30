@@ -10,8 +10,8 @@
 	return;
     }
 
-    unless ( $Ticket->StartsObj->Unix > time ) {
-	push @$Actions, loc('Warning: This reservation needs a \'Starts\' time, in the future.');
+    unless ( $Ticket->StartsObj->Unix ) {
+	push @$Actions, loc('Warning: This reservation needs a \'Starts\' time.');
         return;
     }
 
