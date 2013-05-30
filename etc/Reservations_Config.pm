@@ -65,8 +65,8 @@ Set(%Lifecycles,
             on_merge  => 'cancelled',
             approved  => 'booked',
             denied    => 'cancelled',
-            reminder_on_open     => 'open',
-            reminder_on_resolve  => 'resolved',
+            reminder_on_open     => 'out',
+            reminder_on_resolve  => 'returned',
         },
 
         transitions => {
